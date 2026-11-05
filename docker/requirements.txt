@@ -1,11 +1,6 @@
+mlflow==3.5.0
+scikit-learn==1.6.1
+pandas>=2.0,<3
+numpy>=1.26
 boto3
-pandas 
-gunicorn 
-streamlit 
-sklearn 
-matplotlib 
-seaborn 
-plotly
-mlflow
-psycopg2-binary
-jupyter
+sqlalchemy>=2.0,<2.1

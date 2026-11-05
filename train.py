@@ -18,7 +18,8 @@ if __name__ == "__main__":
     experiment = mlflow.get_experiment_by_name(experiment_name)
 
     client = mlflow.tracking.MlflowClient()
-    run = client.create_run(experiment.experiment_id)
+    # No client.create_run() here: start_run() below creates the run,
+    # or reuses the one prepared by `mlflow run` (MLproject).
 
     print("training model...")
     
@@ -30,8 +31,8 @@ if __name__ == "__main__":
 
     # Parse arguments given in shell script
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n_estimators")
-    parser.add_argument("--min_samples_split")
+    parser.add_argument("--n_estimators", type=int, default=100)
+    parser.add_argument("--min_samples_split", type=int, default=2)
     args = parser.parse_args()
 
     # Import dataset
@@ -49,8 +50,8 @@ if __name__ == "__main__":
         df = df.copy()
 
         ## Transform datetime into a number
-        df["ScheduledDay"] = pd.to_datetime(df["ScheduledDay"], yearfirst=True, infer_datetime_format=True)
-        df["AppointmentDay"] = pd.to_datetime(df["AppointmentDay"], yearfirst=True, infer_datetime_format=True)
+        df["ScheduledDay"] = pd.to_datetime(df["ScheduledDay"], yearfirst=True)
+        df["AppointmentDay"] = pd.to_datetime(df["AppointmentDay"], yearfirst=True)
 
         ## Get the difference between scheduled day and appointment
         df["time_difference_between_scheduled_and_appointment"] = (df["AppointmentDay"] - df["ScheduledDay"]).dt.days
@@ -64,7 +65,7 @@ if __name__ == "__main__":
 
     # Preprocessing 
     categorical_features = ["Gender", "Neighbourhood"] # Select all the columns containing strings
-    categorical_transformer = OneHotEncoder(drop='first', handle_unknown='error', sparse=False)
+    categorical_transformer = OneHotEncoder(drop='first', handle_unknown='ignore', sparse_output=False)
 
     numerical_feature_mask = ~X_train.columns.isin(["Gender", "Neighbourhood", "ScheduledDay","AppointmentDay"]) # Select all the columns containing anything else than strings
     numerical_features = X_train.columns[numerical_feature_mask]
@@ -88,17 +89,25 @@ if __name__ == "__main__":
     ])
 
     # Log experiment to MLFlow
-    with mlflow.start_run(run_id = run.info.run_id) as run:
+    with mlflow.start_run() as run:
         model.fit(X_train, y_train)
         predictions = model.predict(X_train)
 
         # Log model seperately to have more flexibility on setup 
-        mlflow.sklearn.log_model(
+        model_info = mlflow.sklearn.log_model(
             sk_model=model,
-            artifact_path="appointment_cancellation_detector",
+            name="appointment_cancellation_detector",
             registered_model_name="appointment_cancellation_detector_RF",
             signature=infer_signature(X_train, predictions)
         )
+
+        # Put the "challenger" alias on the new version (as in Medhi's train_repo)
+        client.set_registered_model_alias(
+            name="appointment_cancellation_detector_RF",
+            alias="challenger",
+            version=model_info.registered_model_version,
+        )
+        print(f"[INFO] Model version {model_info.registered_model_version} -> alias 'challenger'")
         
     print("...Done!")
     print(f"---Total training time: {time.time()-start_time}")

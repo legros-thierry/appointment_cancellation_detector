@@ -1,26 +1,19 @@
-FROM continuumio/miniconda3
+# Image d'ENTRAINEMENT (et non plus de serveur MLflow)
+# A construire depuis la racine du dépôt :
+#   docker build -t legrosthierry/cancellation-train -f docker/Dockerfile .
+FROM python:3.11-slim
 
 WORKDIR /home/app
 
-RUN apt-get update
-RUN apt-get install nano unzip
-RUN apt install curl -y
+# 1. Les dépendances d'abord (couche mise en cache)
+COPY docker/requirements.txt /dependencies/requirements.txt
+RUN pip install --no-cache-dir -r /dependencies/requirements.txt
 
-RUN curl -fsSL https://get.deta.dev/cli.sh | sh
+# 2. Le code d'entraînement (et rien d'autre : pas de .env dans l'image)
+COPY train.py .
 
-RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-RUN unzip awscliv2.zip
-RUN ./aws/install
+# 3. Hyperparamètres par défaut, remplaçables au lancement avec -e
+ENV N_ESTIMATORS=100
+ENV MIN_SAMPLES_SPLIT=2
 
-COPY requirements.txt /dependencies/requirements.txt
-RUN pip install -r /dependencies/requirements.txt
-
-ENV AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
-ENV AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
-ENV BACKEND_STORE_URI=$BACKEND_STORE_URI
-ENV ARTIFACT_ROOT=$ARTIFACT_ROOT
-
-CMD mlflow server -p $PORT \
-    --host 0.0.0.0 \
-    --backend-store-uri $BACKEND_STORE_URI \
-    --default-artifact-root $ARTIFACT_ROOT
+CMD python train.py --n_estimators $N_ESTIMATORS --min_samples_split $MIN_SAMPLES_SPLIT
